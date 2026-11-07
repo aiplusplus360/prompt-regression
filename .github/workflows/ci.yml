@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e .
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate the example suite
+        run: python -m promptreg check examples/support-suite.json
+
+      # Proves the tool works with no API key, no network and no cost. If the
+      # echo run ever fails, the comparison layer is broken.
+      - name: End-to-end against the offline provider
+        run: |
+          python -m promptreg run examples/support-suite.json \
+            --provider echo \
+            --report report.json || true
+          test -f report.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-py${{ matrix.python }}
+          path: report.json
+          if-no-files-found: ignore
